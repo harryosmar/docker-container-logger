@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Docker Container Logger Dashboard</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- DataTables CSS -->
+    <link href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css" rel="stylesheet">
+    <style>
+        body {
+            padding-top: 20px;
+        }
+        .container {
+            max-width: 95%;
+        }
+        .date-picker {
+            margin-bottom: 20px;
+        }
+        pre {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            max-height: 200px;
+            overflow-y: auto;
+            background-color: #f8f9fa;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        .loading {
+            display: none;
+            text-align: center;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="mb-4">Docker Container Logger Dashboard</h1>
+        
+        <div class="row date-picker">
+            <div class="col-md-4">
+                <div class="input-group">
+                    <span class="input-group-text">Date</span>
+                    <input type="date" id="logDate" class="form-control" value="{{.CurrentDate}}">
+                    <button class="btn btn-primary" id="loadData">Load Data</button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="loading" id="loading">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p>Loading data...</p>
+        </div>
+        
+        <div class="table-responsive">
+            <table id="logsTable" class="table table-striped table-bordered" style="width:100%">
+                <thead>
+                    <tr id="tableHeader">
+                        <!-- Headers will be dynamically generated based on schema -->
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- Data will be loaded here -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- jQuery -->
+    <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- DataTables JS -->
+    <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
+    
+    <script>
+        $(document).ready(function() {
+            let table = null;
+            let schema = [];
+            
+            // Initialize with current date
+            loadData();
+            
+            // Load data button click
+            $('#loadData').on('click', function() {
+                loadData();
+            });
+            
+            function loadData() {
+                const date = $('#logDate').val();
+                $('#loading').show();
+                
+                // Clean up any existing DataTable
+                if ($.fn.DataTable.isDataTable('#logsTable')) {
+                    $('#logsTable').DataTable().destroy();
+                }
+                
+                // Reset the table HTML completely
+                $('#logsTable').html(`
+                    <thead>
+                        <tr id="tableHeader"></tr>
+                    </thead>
+                    <tbody></tbody>
+                `);
+                
+                // Reset the schema
+                schema = [];
+                
+                // First fetch the schema
+                $.ajax({
+                    url: `/api/schema/${date}`,
+                    method: 'GET',
+                    dataType: 'json',
+                    success: function(schemaResponse) {
+                        schema = schemaResponse.schema || [];
+                        
+                        // Generate table headers based on schema
+                        generateTableHeaders(schema);
+                        
+                        // Then fetch the data
+                        fetchData(date);
+                    },
+                    error: function(xhr, status, error) {
+                        console.error('Error loading schema:', error);
+                        alert('Failed to load schema. Please try again.');
+                        $('#loading').hide();
+                    }
+                });
+            }
+            
+            function fetchData(date) {
+                $.ajax({
+                    url: `/api/data/${date}`,
+                    method: 'GET',
+                    dataType: 'json',
+                    success: function(response) {
+                        populateTable(response.data || []);
+                        $('#loading').hide();
+                    },
+                    error: function(xhr, status, error) {
+                        console.error('Error loading data:', error);
+                        alert('Failed to load data. Please try again.');
+                        $('#loading').hide();
+                    }
+                });
+            }
+            
+            function generateTableHeaders(schema) {
+                const header = $('#tableHeader');
+                
+                if (!schema || schema.length === 0) {
+                    header.html('<th>No schema available</th>');
+                    return;
+                }
+                
+                // Add column headers based on schema
+                schema.forEach(function(field) {
+                    // Convert field name to title case for display
+                    const displayName = field
+                        .replace(/_/g, ' ')
+                        .replace(/\b\w/g, l => l.toUpperCase());
+                    
+                    header.append(`<th>${displayName}</th>`);
+                });
+            }
+            
+            function populateTable(rows) {
+                const tbody = $('#logsTable tbody');
+                
+                if (!rows || rows.length === 0) {
+                    const colSpan = schema.length || 1;
+                    tbody.html(`<tr><td colspan="${colSpan}" class="text-center">No log data available for this date</td></tr>`);
+                    return;
+                }
+                
+                // Add rows to the table
+                rows.forEach(function(rowData) {
+                    const row = $('<tr>');
+                    
+                    // Add cells based on schema and row data
+                    rowData.forEach(function(cellData, index) {
+                        const schemaField = schema[index] || '';
+                        
+                        // Special handling for different data types
+                        if (typeof cellData === 'object' && cellData !== null) {
+                            // Format objects (like labels) as JSON
+                            const jsonStr = JSON.stringify(cellData, null, 2);
+                            row.append(`<td><pre>${jsonStr}</pre></td>`);
+                        } 
+                        else if (schemaField === 'timestamp' && typeof cellData === 'string') {
+                            // Format timestamps
+                            try {
+                                const timestamp = new Date(cellData).toLocaleString();
+                                row.append(`<td>${timestamp}</td>`);
+                            } catch (e) {
+                                row.append(`<td>${cellData}</td>`);
+                            }
+                        }
+                        else if (schemaField === 'line' || schemaField === 'log_line') {
+                            // Try to parse log lines as JSON for pretty display
+                            try {
+                                const jsonObj = JSON.parse(cellData);
+                                row.append(`<td><pre>${JSON.stringify(jsonObj, null, 2)}</pre></td>`);
+                            } catch (e) {
+                                // Not JSON, display as plain text
+                                row.append(`<td><pre>${cellData || ''}</pre></td>`);
+                            }
+                        }
+                        else {
+                            // Default handling
+                            row.append(`<td>${cellData || ''}</td>`);
+                        }
+                    });
+                    
+                    tbody.append(row);
+                });
+                
+                // Initialize DataTable with dynamic column settings
+                const columnDefs = [];
+                
+                // Set column widths based on content type and field name patterns
+                schema.forEach(function(field, index) {
+                    let width = "10%"; // Default width for most columns
+                    
+                    // Check field name patterns for common types
+                    if (field.includes('line') || field.includes('message') || field.includes('log')) {
+                        width = "40%"; // Text content fields get more space
+                    } else if (field.includes('label') || field.includes('tag') || field.includes('json')) {
+                        width = "15%"; // Structured data fields get more space
+                    } else if (field.includes('time') || field.includes('date')) {
+                        width = "15%"; // Time fields get more space
+                    } else if (field.includes('source') || field.includes('level') || field.includes('type')) {
+                        width = "5%"; // Short metadata fields get less space
+                    }
+                    
+                    columnDefs.push({ width: width, targets: index });
+                });
+                
+                // Find timestamp column index for sorting (default to first column if not found)
+                const timestampIndex = schema.indexOf('timestamp');
+                const sortColumnIndex = timestampIndex !== -1 ? timestampIndex : 0;
+                
+                // Make sure we don't have any existing DataTable
+                if ($.fn.DataTable.isDataTable('#logsTable')) {
+                    $('#logsTable').DataTable().destroy();
+                }
+                
+                // Initialize the DataTable
+                table = $('#logsTable').DataTable({
+                    pageLength: 25,
+                    order: [[sortColumnIndex, 'desc']], // Sort by timestamp descending if available
+                    responsive: true,
+                    columnDefs: columnDefs,
+                    destroy: true // Allow the table to be destroyed and recreated
+                });
+                
+                // Debug logging
+                console.log('DataTable initialized with ' + rows.length + ' rows');
+            }
+        });
+    </script>
+</body>
+</html>
