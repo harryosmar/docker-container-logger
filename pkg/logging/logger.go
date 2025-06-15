@@ -165,16 +165,17 @@ func (f *FileLogger) writeLoop() {
 		select {
 		case entry := <-f.queue:
 			processedEntry := entry
-			shouldWrite := true
+			shouldWrite := false
 
 			// Apply filter if configured
 			if f.logFilter != nil {
 				logEntry := filter.LogEntry{Content: entry, Source: ""}
-				processedLogEntry, shouldWrite, err := f.logFilter.Process(context.Background(), logEntry)
+				processedLogEntry, shouldWriteResult, err := f.logFilter.Process(context.Background(), logEntry)
 				if err != nil {
 					f.logger.Error("Error processing log entry", zap.Error(err))
 					shouldWrite = false
-				} else if shouldWrite {
+				} else if shouldWriteResult {
+					shouldWrite = true
 					processedEntry = processedLogEntry.Content
 				}
 			} else {
@@ -598,7 +599,8 @@ func (f *FileLogger) rollover() {
 			return
 		}
 		// Initialize the file with an empty schema log document
-		emptyDoc := f.logFilter.GetSchema()
+		//emptyDoc := f.logFilter.GetSchema()
+		emptyDoc := models.SchemaLogDocument{Schema: f.logFilter.GetSchema(), Rows: [][]interface{}{}}
 		emptyContent, err := json.Marshal(emptyDoc)
 		if err != nil {
 			f.logger.Error("Failed to marshal empty schema log document", zap.Error(err))

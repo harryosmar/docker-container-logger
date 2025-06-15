@@ -101,7 +101,7 @@ func (r *S3Reader) ReadLogs(ctx context.Context, date string, logFilter filter.F
 	folderPath := r.provider.GetFolderPath()
 
 	// Construct the remote path based on the date
-	remotePath := date
+	remotePath := fmt.Sprintf("%s.json", date)
 	if folderPath != "" {
 		remotePath = fmt.Sprintf("%s/%s", folderPath, date)
 	}

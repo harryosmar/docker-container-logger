@@ -13,7 +13,7 @@ type LogWadugsFilter struct {
 }
 
 // WadugsSchema defines the schema for Wadugs API logs
-var WadugsSchema = []string{"service_name", "source", "level", "time", "request_id", "session_id", "environment", "version", "raw"}
+var WadugsSchema = []string{"service_name", "source", "level", "time", "request_id", "session_id", "ip_address", "user_id", "environment", "version", "raw"}
 
 // Process filters log entries based on required fields
 // Returns the original entry and true if it should be kept, false if it should be dropped
@@ -59,12 +59,17 @@ func (l LogWadugsFilter) Process(ctx context.Context, entry LogEntry) (LogEntry,
 	// Check for required fields in the line JSON
 	requestID, hasRequestID := lineData["request_id"]
 	sessionID, hasSessionID := lineData["session_id"]
+	ipAddress, hasIpAddress := lineData["ip_address"]
+	userID, hasUserID := lineData["user_id"]
 	level, hasLevel := lineData["level"]
 	time, hasTime := lineData["time"]
 	environment, hasEnvironment := lineData["environment"]
 	version, hasVersion := lineData["version"]
+	//_, hasTobeLog := lineData["tobe_log"]
+	_, _ = lineData["tobe_log"]
 
 	// Filter out entries that don't have all required fields
+	//if !hasRequestID || !hasLevel || !hasTime || !hasTobeLog {
 	if !hasRequestID || !hasLevel || !hasTime {
 		l.logger.Debug("Log entry missing required fields in line JSON",
 			zap.Bool("has_request_id", hasRequestID),
@@ -116,6 +121,20 @@ func (l LogWadugsFilter) Process(ctx context.Context, entry LogEntry) (LogEntry,
 		}
 	}
 
+	ipAddressStr := ""
+	if hasIpAddress {
+		if ipAddressVal, ok := ipAddress.(string); ok {
+			ipAddressStr = ipAddressVal
+		}
+	}
+
+	userIDStr := ""
+	if hasUserID {
+		if userIDVal, ok := userID.(string); ok {
+			userIDStr = userIDVal
+		}
+	}
+
 	environmentStr := ""
 	if hasEnvironment {
 		if environmentVal, ok := environment.(string); ok {
@@ -138,6 +157,8 @@ func (l LogWadugsFilter) Process(ctx context.Context, entry LogEntry) (LogEntry,
 		timeStr,        // timestamp
 		requestIDStr,   // request_id
 		sessionIDStr,   // session_id
+		ipAddressStr,   // ip_address
+		userIDStr,      // user_id
 		environmentStr, // env
 		versionStr,     // version
 		lineStr,        // raw JSON line

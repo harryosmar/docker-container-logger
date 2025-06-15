@@ -5,7 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/aws/aws-sdk-go-v2/aws"
 	awsConfig "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/harryosmar/docker-container-logger/pkg/filter"
 	"github.com/harryosmar/docker-container-logger/pkg/models"
@@ -15,10 +17,14 @@ import (
 
 // Provider implements the storage.Provider interface for AWS S3
 type Provider struct {
-	client     *s3.Client
-	bucketName string
-	logger     *zap.Logger
-	folderPath string
+	client       *s3.Client
+	bucketName   string
+	logger       *zap.Logger
+	folderPath   string
+	region       string
+	accessKey    string
+	secretKey    string
+	sessionToken string
 }
 
 // NewProvider creates a new S3 storage provider
@@ -54,7 +60,9 @@ func (f *defaultSchemaFilter) GetSchema() []string {
 // UploadWithFilter implements the storage.Provider interface for S3 with custom filter schema
 func (p *Provider) UploadWithFilter(ctx context.Context, localPath string, remotePath string, logFilter filter.Filter) error {
 	// append folderPath to remotePath
-	remotePath = fmt.Sprintf("%s/%s", p.folderPath, remotePath)
+	if p.folderPath != "" {
+		remotePath = fmt.Sprintf("%s/%s", p.folderPath, remotePath)
+	}
 
 	// Check if the remote file already exists
 	exists := false
@@ -148,9 +156,10 @@ func (p *Provider) UploadWithFilter(ctx context.Context, localPath string, remot
 
 		// Upload combined content
 		_, err = p.client.PutObject(ctx, &s3.PutObjectInput{
-			Bucket: &p.bucketName,
-			Key:    &remotePath,
-			Body:   bytes.NewReader(combinedContent),
+			Bucket:      &p.bucketName,
+			Key:         &remotePath,
+			Body:        bytes.NewReader(combinedContent),
+			ContentType: aws.String("application/json"),
 		})
 		if err != nil {
 			p.logger.Error("Failed to upload combined file", zap.Error(err))
@@ -169,9 +178,10 @@ func (p *Provider) UploadWithFilter(ctx context.Context, localPath string, remot
 
 		// Upload the content
 		_, err = p.client.PutObject(ctx, &s3.PutObjectInput{
-			Bucket: &p.bucketName,
-			Key:    &remotePath,
-			Body:   bytes.NewReader(localContent),
+			Bucket:      &p.bucketName,
+			Key:         &remotePath,
+			Body:        bytes.NewReader(localContent),
+			ContentType: aws.String("application/json"),
 		})
 		if err != nil {
 			p.logger.Error("Failed to upload new file", zap.Error(err))
@@ -225,8 +235,44 @@ func (p *Provider) Initialize(ctx context.Context, config map[string]interface{}
 	}
 	p.folderPath = path
 
+	// Extract region from config
+	region, ok := config["region"].(string)
+	if !ok || region == "" {
+		p.region = ""
+	}
+	p.region = region
+
+	// Extract region from config
+	accessKey, ok := config["access_key"].(string)
+	if !ok || accessKey == "" {
+		p.accessKey = ""
+	}
+	p.accessKey = accessKey
+
+	// Extract region from config
+	secretKey, ok := config["secret_key"].(string)
+	if !ok || secretKey == "" {
+		p.secretKey = ""
+	}
+	p.secretKey = secretKey
+
+	// Extract region from config
+	sessionToken, ok := config["session_token"].(string)
+	if !ok || sessionToken == "" {
+		p.sessionToken = ""
+	}
+	p.sessionToken = sessionToken
+
 	// Load AWS config
-	awsCfg, err := awsConfig.LoadDefaultConfig(ctx)
+	awsCfg, err := awsConfig.LoadDefaultConfig(
+		ctx,
+		awsConfig.WithRegion(region),
+		awsConfig.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(
+			p.accessKey,
+			p.secretKey,
+			p.sessionToken,
+		)),
+	)
 	if err != nil {
 		return fmt.Errorf("failed to load AWS config: %w", err)
 	}
