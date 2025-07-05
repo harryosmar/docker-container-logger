@@ -443,3 +443,50 @@ The dashboard and API support dynamic schemas, allowing the system to adapt to d
 ## License
 
 MIT
+
+## Build
+
+```shell
+
+# macos
+env GOOS=darwin GOARCH=amd64 go build -o build/docker-container-logger .
+
+# linux
+env GOOS=linux GOARCH=amd64 go build -o build/docker-container-logger .
+```
+
+## Deploy
+
+```ini
+[Unit]
+Description=docker-container-logger
+After=network.target
+
+[Service]
+User=ubuntu
+WorkingDirectory=/home/ubuntu/docker-container-logger
+ExecStart=/home/ubuntu/docker-container-logger/build/docker-container-logger
+Environment=WADUGS_API_TOKEN=eyJ
+Environment=APP_NAME=docker-container-logger
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```shell
+cd ~/docker-container-logger && git pull origin master
+
+cd  /etc/systemd/system
+
+vim docker-container-logger.service
+
+sudo systemctl daemon-reexec
+sudo systemctl daemon-reload
+sudo systemctl enable docker-container-logger.service
+
+sudo systemctl restart docker-container-logger.service
+
+# check log
+sudo journalctl -u docker-container-logger.service -f
+```
