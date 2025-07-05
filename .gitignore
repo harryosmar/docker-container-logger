@@ -1,3 +1,4 @@
 *.json
 uploads/*.json
 .idea/
+logs/
