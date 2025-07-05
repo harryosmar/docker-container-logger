@@ -474,6 +474,48 @@ Restart=always
 WantedBy=multi-user.target
 ```
 
+Example command to get list containers matching a label
+```shell
+curl --unix-socket /var/run/docker.sock \
+  "http://localhost/containers/json?filters=%7B%22label%22%3A%5B%22com.docker.swarm.service.name%3Dwadugs-api%22%5D%7D"
+```
+
+s3 config example 
+```json
+{
+  "filter_labels": ["com.docker.swarm.service.name=wadugs-api","com.docker.swarm.service.name=wadugs-api-staging"],
+  "all_containers": false,
+  "format": "json",
+  "max_streams": 100,
+  "tail_buffer_size": 1000,
+  "write_buffer_size": 1000,
+  "since_window_seconds": 60,
+  "gc_percent": 20,
+  "drop_on_full": false,
+  "metrics_addr": ":8090",
+  "rollover_minutes": 1,
+  "file_name_pattern": "2006-01-02",
+  "storage": {
+    "type": "s3",
+    "config": {
+      "bucket_name": "",
+      "folder_path": "",
+      "region": "",
+      "endpoint": "",
+      "prefix": "",
+      "access_key": "",
+      "secret_key": "",
+      "session_token": "",
+      "use_iam_role": false
+    }
+  },
+  "filter": {
+    "type": "wadugs",
+    "config": {}
+  }
+}
+```
+
 ```shell
 cd ~/docker-container-logger && git pull origin master
 
