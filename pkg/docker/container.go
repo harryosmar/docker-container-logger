@@ -61,14 +61,13 @@ func NewContainerManager(
 
 // ListContainers lists containers based on configured filters
 func (cm *ContainerManager) ListContainers(ctx context.Context) ([]types.Container, error) {
-	if cm.allContainers || len(cm.filterLabels) == 0 {
-		// If allContainers is true, don't apply any filters
-		return cm.client.ContainerList(ctx, container.ListOptions{})
-	}
-
 	allContainers, err := cm.client.ContainerList(ctx, container.ListOptions{})
 	if err != nil {
 		return nil, err
+	}
+
+	if cm.allContainers || len(cm.filterLabels) == 0 {
+		return allContainers, nil
 	}
 
 	// Filter containers based on our filter labels
