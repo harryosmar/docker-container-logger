@@ -61,24 +61,12 @@ func NewContainerManager(
 
 // ListContainers lists containers based on configured filters
 func (cm *ContainerManager) ListContainers(ctx context.Context) ([]types.Container, error) {
-	if cm.allContainers {
+	if cm.allContainers || len(cm.filterLabels) == 0 {
 		// If allContainers is true, don't apply any filters
 		return cm.client.ContainerList(ctx, container.ListOptions{})
 	}
 
-	if len(cm.filterLabels) == 0 {
-		// Default filter if no labels specified
-		f := filters.NewArgs()
-		f.Add("label", "com.docker.swarm.service.name")
-		return cm.client.ContainerList(ctx, container.ListOptions{Filters: f})
-	}
-
-	// Get all containers with at least some label
-	f := filters.NewArgs()
-	// We still need some basic filter to avoid getting all containers
-	f.Add("label", "") // This gets containers with any label
-
-	allContainers, err := cm.client.ContainerList(ctx, container.ListOptions{Filters: f})
+	allContainers, err := cm.client.ContainerList(ctx, container.ListOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -92,7 +80,7 @@ func (cm *ContainerManager) ListContainers(ctx context.Context) ([]types.Contain
 		for _, filterLabel := range cm.filterLabels {
 			// Parse the filter label
 			parts := strings.SplitN(filterLabel, "=", 2)
-			
+
 			if len(parts) == 1 {
 				// Just checking for label existence
 				if _, exists := c.Labels[parts[0]]; exists {
