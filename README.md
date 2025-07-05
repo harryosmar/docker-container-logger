@@ -466,8 +466,7 @@ After=network.target
 User=ubuntu
 WorkingDirectory=/home/ubuntu/docker-container-logger
 ExecStart=/home/ubuntu/docker-container-logger/build/docker-container-logger
-Environment=WADUGS_API_TOKEN=eyJ
-Environment=APP_NAME=docker-container-logger
+Environment=DOCKER_CONTAINER_LOGGER_CONFIG_PATH=
 Restart=always
 
 [Install]

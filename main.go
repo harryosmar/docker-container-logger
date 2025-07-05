@@ -9,7 +9,11 @@ import (
 )
 
 func main() {
-	configPath := flag.String("config", "config.json", "Path to config file")
+	configFilePath := os.Getenv("DOCKER_CONTAINER_LOGGER_CONFIG_PATH")
+	if configFilePath == "" {
+		configFilePath = "config.json"
+	}
+	configPath := flag.String("config", configFilePath, "Path to config file")
 	flag.Parse()
 
 	// Create and start the application
