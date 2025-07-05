@@ -466,7 +466,7 @@ After=network.target
 User=ubuntu
 WorkingDirectory=/home/ubuntu/docker-container-logger
 ExecStart=/home/ubuntu/docker-container-logger/build/docker-container-logger
-Environment=DOCKER_CONTAINER_LOGGER_CONFIG_PATH=
+Environment=DOCKER_CONTAINER_LOGGER_CONFIG_PATH=/home/ubuntu/docker-container-logger/build/config.json
 Restart=always
 
 [Install]
