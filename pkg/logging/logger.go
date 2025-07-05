@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -66,35 +67,43 @@ func NewFileLogger(writeChanSize int, storageProvider storage.Provider, logFilte
 		fileNamePattern = "2006-01-02" // daily
 	}
 
-	// Default batch processing settings
-	minBatchSize := 50
-	maxBatchSize := 500
-	currentBatchSize := 100 // Start with a moderate batch size
-	batchSizeAdjustInterval := 1 * time.Minute
+	// Determine log directory
+	logDir := "logs"
+	
+	// Check if environment variable for local path is set
+	if envLocalPath := os.Getenv("DOCKER_CONTAINER_LOGGER_LOCAL_PATH"); envLocalPath != "" {
+		// Use environment variable path
+		logDir = envLocalPath
+		logger.Info("Using local path from environment variable", zap.String("path", logDir))
+	} else if filepath.IsAbs(fileNamePattern) {
+		// Extract directory from the absolute path if no env var
+		logDir = filepath.Dir(fileNamePattern)
+		// Update fileNamePattern to just the filename pattern
+		fileNamePattern = filepath.Base(fileNamePattern)
+	}
 
-	// Default worker pool settings
-	maxWorkers := 4 // Default to 4 workers
-
-	// Default compression settings
-	compressLogs := false
-	compressionLevel := 6 // Default gzip compression level
+	// Create the log directory if it doesn't exist
+	os.MkdirAll(logDir, 0755)
 
 	return &FileLogger{
-		queue:                   make(chan []byte, writeChanSize),
-		shutdownChan:            make(chan struct{}),
-		minBatchSize:            minBatchSize,
-		maxBatchSize:            maxBatchSize,
-		currentBatchSize:        currentBatchSize,
-		batchSizeAdjustInterval: batchSizeAdjustInterval,
-		maxWorkers:              maxWorkers,
-		workerPool:              make(chan struct{}, maxWorkers),
-		compressLogs:            compressLogs,
-		compressionLevel:        compressionLevel,
-		storageProvider:         storageProvider,
-		logFilter:               logFilter,
-		logger:                  logger,
-		rolloverMinutes:         rolloverMinutes,
-		fileNamePattern:         fileNamePattern,
+		queue:           make(chan []byte, writeChanSize),
+		shutdownChan:    make(chan struct{}),
+		fileMutex:       sync.Mutex{},
+		logger:          logger,
+		minBatchSize:    1000,
+		maxBatchSize:    10000,
+		currentBatchSize: 1000,
+		batchSizeAdjustInterval: 10 * time.Second,
+		lastProcessingTime:      time.Millisecond,
+		workerPool:      make(chan struct{}, 10),
+		maxWorkers:      10,
+		compressLogs:     false,
+		compressionLevel: gzip.DefaultCompression,
+		storageProvider: storageProvider,
+		logFilter:       logFilter,
+		rolloverMinutes: rolloverMinutes,
+		fileNamePattern: fileNamePattern,
+		logDir:          logDir,
 	}
 }
 
@@ -492,14 +501,18 @@ func (f *FileLogger) initLogFile() error {
 	now := time.Now()
 	f.currentDate = now.Format(f.fileNamePattern)
 	fileName := fmt.Sprintf("%s.json", f.currentDate)
+	
+	// Create full path using logDir
+	filePath := filepath.Join(f.logDir, fileName)
 
 	// Check if file exists and has content
-	fileInfo, err := os.Stat(fileName)
+	fileInfo, err := os.Stat(filePath)
 	fileExists := err == nil && fileInfo.Size() > 0
 
 	// Open file with appropriate flags
-	file, err := os.OpenFile(fileName, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	file, err := os.OpenFile(filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
+		f.logger.Error("Failed to open log file", zap.Error(err), zap.String("path", filePath))
 		return err
 	}
 
@@ -528,7 +541,7 @@ func (f *FileLogger) initLogFile() error {
 		f.currentWriter.Flush()
 	}
 
-	f.logger.Info("Initialized log file with schema-based format", zap.String("file", fileName), zap.String("pattern", f.fileNamePattern))
+	f.logger.Info("Initialized log file with schema-based format", zap.String("file", filePath), zap.String("pattern", f.fileNamePattern))
 	return nil
 }
 
@@ -591,7 +604,8 @@ func (f *FileLogger) rollover() {
 		f.uploadToStorage(oldDate)
 
 		// Clear the local file after successful upload
-		localPath := fmt.Sprintf("%s.json", oldDate)
+		fileName := fmt.Sprintf("%s.json", oldDate)
+		localPath := filepath.Join(f.logDir, fileName)
 		// Open the file with truncate flag to clear its contents
 		file, err := os.OpenFile(localPath, os.O_TRUNC|os.O_WRONLY, 0644)
 		if err != nil {
@@ -617,7 +631,9 @@ func (f *FileLogger) rollover() {
 
 // uploadToStorage uploads a log file to cloud storage
 func (f *FileLogger) uploadToStorage(date string) {
-	localPath := fmt.Sprintf("%s.json", date)
+	fileName := fmt.Sprintf("%s.json", date)
+	// Create full path using logDir
+	localPath := filepath.Join(f.logDir, fileName)
 
 	// Use the file name pattern for remote path, but ensure we're using the correct date format
 	// This allows for aggregating logs into daily/monthly files based on the pattern
